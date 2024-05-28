@@ -1,0 +1,141 @@
+1. ссылка на условие задачи:
+http://joxi.ru/ZrJWdLlCkgo9Mm
+
+select extract(month from wdate) as wmonth, 
+round(avg(wtemp)::decimal, 2) as t_avg,
+percentile_disc(0.50) within group (order by wtemp) as t_med,
+percentile_disc(0.90) within group (order by wtemp) as t_p90
+from weather
+group by wmonth
+
+
+2. ссылка на условие задачи:
+http://joxi.ru/Vm6e9JPTKNKZyr
+
+with data as (select year, 
+ntile(4) over (order by month) as quarter,
+revenue
+from sales)
+
+select * from (
+select year, quarter,
+sum(revenue) as revenue,
+lag(sum(revenue), 4) over (order by year, quarter) as prev,
+round( sum(revenue) / lag(sum(revenue), 4) over (order by year, quarter) * 100.0) as perc
+from data
+group by year, quarter ) as t
+where year = 2020
+
+
+3. ссылка на условие задачи:
+http://joxi.ru/Q2KdLKNtgkadbA
+
+with ts as (
+select * from 
+(select year, month,  
+(case when plan = 'silver' then rank() over w end) as rank_silver
+from sales
+window w as (partition by year, plan order by quantity desc)
+order by year, month) as s
+where year = 2020 and rank_silver is not null),
+
+tg as (
+select * from 
+(select year, month,  
+(case when plan = 'gold' then rank() over w end) as rank_gold
+from sales
+window w as (partition by year, plan order by quantity desc)
+order by year, month) as g 
+where year = 2020 and rank_gold is not null),
+
+tp as (
+select * from 
+(select year, month,  
+(case when plan = 'platinum' then rank() over w end) as rank_platinum
+from sales
+window w as (partition by year, plan order by quantity desc)
+order by year, month) as p
+where year = 2020 and rank_platinum is not null)
+
+
+select
+  tg.year, tg.month,
+  rank_silver as silver,
+  rank_gold as gold,
+  rank_platinum as platinum
+from tg
+join ts on tg.year = ts.year and tg.month = ts.month
+join tp on tg.year = tp.year and tg.month = tp.month
+
+
+4. ссылка на условие задачи:
+http://joxi.ru/12MKZaqC8yQoEr
+
+with agroups as (
+  select user_id, 
+    adate,
+    to_days(adate) - dense_rank() over w as group_id
+  from activity
+  window w as (partition by user_id order by adate)
+)
+
+select user_id, 
+  min(adate) as day_start,
+  max(adate) as day_end,
+  count(*) as day_count
+from agroups
+group by user_id, group_id
+order by user_id, day_start
+
+
+5. ссылка на условие задачи:
+http://joxi.ru/Y2LLKZJUvNEjR2
+
+with src as ( select
+  wdate, wtemp, precip, 
+  row_number() over w as rownum
+from weather
+where wdate between '2020-04-01' and '2020-04-30'
+window w as (partition by precip order by wdate desc)
+order by wdate)
+
+select
+  wdate, wtemp, precip
+from src
+where rownum = 1
+
+6. ссылка на условие:
+http://joxi.ru/V2VkdyZUGnkbYA
+
+-- расстояния между соседями
+with apoints as (
+  select user_id, adate, points,
+ifnull(points - lag(points) over w, 0) as points_lag
+  from activity
+  window w as (partition by user_id order by adate)
+order by user_id
+),
+
+-- границы кластеров
+agroups as (
+  select
+    user_id, adate, points, points_lag, 
+    sum(case when points_lag >= 0 then 0 else 1 end) over w as group_id
+  from apoints
+  window w as (partition by user_id order by adate)
+)
+
+-- сами кластеры
+select user_id,
+  min(adate) as day_start,
+  max(adate) as day_end,
+  count(*) as day_count,
+  sum(points) as p_total
+from agroups
+group by user_id, group_id
+having count(*) > 1
+
+
+
+
+
